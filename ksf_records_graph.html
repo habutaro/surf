@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KSF Records Graph</title>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+    <style>
+      body {
+        padding-bottom: 24px;
+      }
+
+      .page-shell {
+        width: calc(100vw - 40px);
+        max-width: 1760px;
+        margin: 0 auto;
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      @media (max-width: 767px) {
+        .page-shell {
+          width: calc(100vw - 24px);
+        }
+      }
+
+      .level {
+        width: 72px;
+        padding-right: 8px;
+        vertical-align: middle;
+        white-space: nowrap;
+        font-weight: 700;
+        font-size: 12px;
+      }
+
+      .bar-cell {
+        width: 100%;
+      }
+
+      .total {
+        width: 72px;
+        padding-left: 8px;
+        vertical-align: middle;
+        text-align: right;
+        white-space: nowrap;
+        color: #666666;
+        font-size: 12px;
+      }
+
+      .graph-table {
+        width: 100%;
+      }
+
+      .graph-table tr + tr td {
+        padding-top: 8px;
+      }
+
+      .progress {
+        height: 28px;
+        margin-bottom: 0;
+        overflow: hidden;
+        background-color: #efefef;
+        border-radius: 4px;
+      }
+
+      .progress-bar {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 28px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        cursor: pointer;
+        box-shadow: inset -1px 0 rgba(255, 255, 255, 0.45);
+      }
+
+      .progress-bar-empty {
+        cursor: default;
+        box-shadow: none;
+      }
+
+      .val,
+      .per {
+        padding: 0 2px;
+      }
+
+      .per {
+        display: none;
+      }
+
+      .mode-switch {
+        margin-bottom: 16px;
+      }
+
+      .legend {
+        margin-top: 20px;
+      }
+
+      .legend-item {
+        display: inline-block;
+        margin: 0 14px 8px 0;
+        font-size: 12px;
+      }
+
+      .legend-swatch {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 6px;
+        border-radius: 2px;
+        vertical-align: -1px;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+      }
+
+      .status-line {
+        margin-top: 10px;
+        color: #666666;
+        font-size: 12px;
+      }
+
+      .error-box {
+        display: none;
+        margin-top: 16px;
+      }
+
+      .loading {
+        display: none;
+        margin-left: 10px;
+      }
+
+      .empty-state {
+        display: none;
+        margin-top: 18px;
+        color: #666666;
+      }
+
+      .modal-body {
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+
+      .modal-body ul {
+        padding-left: 20px;
+        margin-bottom: 0;
+      }
+
+      .modal-body li + li {
+        margin-top: 4px;
+      }
+
+      .player-heading {
+        display: none;
+        margin-left: 6px;
+        white-space: nowrap;
+      }
+
+    </style>
+  </head>
+  <body>
+    <nav class="navbar navbar-inverse navbar-static-top" role="navigation">
+      <div class="container-fluid page-shell">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="./index.html">KSFツール</a>
+        </div>
+        <div class="navbar-collapse" id="nav">
+          <ul class="nav navbar-nav">
+            <li class="active"><a href="./ksf_records_graph.html">Lamp Graph</a></li>
+            <li><a href="./index.html">サーフ発狂難易度表</a></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container-fluid page-shell">
+
+      <h1>
+        KSF Records Graph
+        <small id="player-heading" class="player-heading">
+          <a id="player-link" href="" target="_blank" rel="noopener noreferrer"></a>
+        </small>
+      </h1>
+
+      <form id="load-form" class="form-inline">
+        <div class="form-group">
+          <input
+            id="steam-id"
+            type="text"
+            class="form-control"
+            placeholder="STEAM_0:x:xxxxxx"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false">
+        </div>
+        <button id="load-button" class="btn btn-primary" type="submit">読み込む</button>
+        <span id="loading" class="loading">取得中...</span>
+      </form>
+
+      <div class="btn-group mode-switch" data-toggle="buttons">
+        <label class="btn btn-default active">
+          <input type="radio" name="label-mode" value="tier" checked>Tier
+        </label>
+        <label class="btn btn-default">
+          <input type="radio" name="label-mode" value="star">★
+        </label>
+      </div>
+
+      <div id="meta" class="status-line"></div>
+
+      <div id="error-box" class="alert alert-danger error-box"></div>
+
+      <table class="graph-table">
+        <tbody id="graph-body"></tbody>
+      </table>
+
+      <div id="empty-state" class="empty-state">データがありません。</div>
+
+      <div id="legend" class="legend"></div>
+    </div>
+
+    <div id="detail-modal" class="modal" tabindex="-1" role="dialog">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">
+              <span aria-hidden="true">&times;</span>
+              <span class="sr-only">Close</span>
+            </button>
+            <h4 class="modal-title" id="detail-title"></h4>
+          </div>
+          <div class="modal-body" id="detail-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+    <script src="https://netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+    <script src="./ksf_star_buckets.js"></script>
+    <script>
+      var CATEGORY_DEFS = [
+        { key: "rank1", label: "rank 1", color: "#c62828" },
+        { key: "rank2", label: "rank 2", color: "#d84726" },
+        { key: "rank3", label: "rank 3", color: "#ef6c00" },
+        { key: "rank4", label: "rank 4", color: "#f57c00" },
+        { key: "rank5", label: "rank 5", color: "#ea8621" },
+        { key: "rank6", label: "rank 6", color: "#df9f26" },
+        { key: "rank7", label: "rank 7", color: "#d0b52c" },
+        { key: "rank8", label: "rank 8", color: "#c0ca33" },
+        { key: "rank9", label: "rank 9", color: "#a7c837" },
+        { key: "rank10", label: "rank 10", color: "#8bc34a" },
+        { key: "group1", label: "group 1", color: "#72c06d" },
+        { key: "group2", label: "group 2", color: "#57b35a" },
+        { key: "group3", label: "group 3", color: "#43a047" },
+        { key: "group4", label: "group 4", color: "#2f8f46" },
+        { key: "group5", label: "group 5", color: "#1e7a3e" },
+        { key: "group6", label: "group 6", color: "#145a32" },
+        { key: "group7", label: "group 7", color: "#0b3d20" },
+        { key: "uncleared", label: "未クリア", color: "#9e9e9e" }
+      ];
+
+      var CATEGORY_LOOKUP = {};
+      var STAR_BUCKET_BY_MAP = window.KSF_STAR_BUCKET_BY_MAP || {};
+      var STAR_BUCKET_MAX = window.KSF_STAR_BUCKET_MAX || 24;
+      var currentGraph = null;
+      var currentRecords = null;
+      var currentSteamId = "";
+      var currentSource = "";
+      var currentPlayerName = "";
+
+      CATEGORY_DEFS.forEach(function(def) {
+        CATEGORY_LOOKUP[def.key] = def;
+      });
+
+      function getContrastTextColor(hexColor) {
+        var hex = hexColor.replace("#", "");
+        var r = parseInt(hex.slice(0, 2), 16);
+        var g = parseInt(hex.slice(2, 4), 16);
+        var b = parseInt(hex.slice(4, 6), 16);
+        var yiq = (r * 299 + g * 587 + b * 114) / 1000;
+
+        return yiq >= 150 ? "#23303d" : "#ffffff";
+      }
+
+      function shouldShowCount(count, total) {
+        var digits;
+        var percent;
+        var minimumPercent;
+
+        if (!count || !total) {
+          return false;
+        }
+
+        digits = String(count).length;
+        percent = (count / total) * 100;
+        minimumPercent = 0.85 + ((digits - 1) * 0.9);
+
+        return percent >= minimumPercent;
+      }
+
+      function buildRecordsUrl(steamId) {
+        return "https://ksf.surf/players/" + steamId + "/records?game=66t&mode=fw";
+      }
+
+      function decodeHtmlEntities(text) {
+        var textarea = document.createElement("textarea");
+        textarea.innerHTML = text;
+        return textarea.value;
+      }
+
+      function extractPlayerName(html) {
+        var headingMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+        var headingText;
+
+        if (!headingMatch) {
+          return "";
+        }
+
+        headingText = headingMatch[1]
+          .replace(/\x3C!--[\s\S]*?-->/g, "")
+          .replace(/<[^>]+>/g, "");
+
+        headingText = decodeHtmlEntities(headingText)
+          .replace(/\s+/g, " ")
+          .trim();
+
+        return headingText
+          .replace(/'s\s+records$/i, "")
+          .replace(/\s+records$/i, "")
+          .trim();
+      }
+
+      function renderPlayerLink(steamId, playerName) {
+        var wrapper = document.getElementById("player-heading");
+        var link = document.getElementById("player-link");
+        var label = playerName || steamId;
+
+        if (!steamId || !label) {
+          wrapper.style.display = "none";
+          link.textContent = "";
+          link.removeAttribute("href");
+          return;
+        }
+
+        link.href = "https://ksf.surf/players/" + steamId;
+        link.textContent = label;
+        link.title = steamId;
+        wrapper.style.display = "inline";
+      }
+
+      function buildProxyUrls(steamId) {
+        var targetUrl = buildRecordsUrl(steamId);
+
+        return [
+          {
+            url: "https://corx.venipa.workers.dev/?url=" + encodeURIComponent(targetUrl),
+            source: "corx"
+          },
+          {
+            url: "https://api.allorigins.win/raw?url=" + encodeURIComponent(targetUrl),
+            source: "allorigins"
+          }
+        ];
+      }
+
+      function fetchTextWithTimeout(url, timeoutMs) {
+        return new Promise(function(resolve, reject) {
+          var done = false;
+          var timer = window.setTimeout(function() {
+            if (!done) {
+              done = true;
+              reject(new Error("request timeout"));
+            }
+          }, timeoutMs);
+
+          fetch(url, {
+            method: "GET",
+            cache: "no-store",
+            credentials: "omit"
+          }).then(function(response) {
+            if (done) {
+              return;
+            }
+            done = true;
+            window.clearTimeout(timer);
+
+            if (!response.ok) {
+              reject(new Error("HTTP " + response.status));
+              return;
+            }
+
+            response.text().then(function(text) {
+              resolve(text);
+            }).catch(function(error) {
+              reject(error);
+            });
+          }).catch(function(error) {
+            if (done) {
+              return;
+            }
+            done = true;
+            window.clearTimeout(timer);
+            reject(error);
+          });
+        });
+      }
+
+      function fetchRecordsPage(steamId) {
+        var attempts = buildProxyUrls(steamId);
+        var jobs = attempts.map(function(attempt) {
+          return fetchTextWithTimeout(attempt.url, 20000).then(function(text) {
+            return {
+              text: text,
+              source: attempt.source
+            };
+          });
+        });
+
+        return Promise.any(jobs).catch(function(error) {
+          if (error && error.errors && error.errors.length) {
+            throw new Error(error.errors.map(function(innerError, index) {
+              var attempt = attempts[index];
+              var source = attempt ? attempt.source : "proxy " + (index + 1);
+              var message = innerError && innerError.message ? innerError.message : String(innerError);
+              return source + ": " + message;
+            }).join(" / "));
+          }
+          throw error || new Error("request failed");
+        });
+      }
+
+      function extractRecords(html) {
+        var startMarker = "\\\"data\\\":[";
+        var endMarker = "],\\\"steamID\\\":\\\"";
+        var start = html.indexOf(startMarker);
+        var end;
+        var jsonText;
+
+        if (start === -1) {
+          throw new Error("records data not found");
+        }
+
+        end = html.indexOf(endMarker, start);
+        if (end === -1) {
+          throw new Error("steam marker not found");
+        }
+
+        jsonText = "[" + html.slice(start + startMarker.length, end) + "]";
+        jsonText = jsonText
+          .replace(/\\"/g, "\"")
+          .replace(/\\\\/g, "\\");
+
+        return JSON.parse(jsonText);
+      }
+
+      function classifyRank(rank) {
+        var text = rank == null ? "" : String(rank).trim();
+        var match;
+
+        if (!text) {
+          return "uncleared";
+        }
+
+        match = text.match(/^g([1-7])$/i);
+        if (match) {
+          return "group" + match[1];
+        }
+
+        match = text.match(/^(10|[1-9])$/);
+        if (match) {
+          return "rank" + match[1];
+        }
+
+        return "uncleared";
+      }
+
+      function createCategoryBuckets() {
+        var categories = {};
+
+        CATEGORY_DEFS.forEach(function(def) {
+          categories[def.key] = {
+            count: 0,
+            maps: []
+          };
+        });
+
+        return categories;
+      }
+
+      function createRow(key, label, title) {
+        return {
+          key: key,
+          label: label,
+          title: title || label,
+          total: 0,
+          categories: createCategoryBuckets()
+        };
+      }
+
+      function buildTierGraph(records) {
+        var rows = {};
+        var totals = {};
+        var unknownCount = 0;
+
+        CATEGORY_DEFS.forEach(function(def) {
+          totals[def.key] = 0;
+        });
+
+        records.forEach(function(record) {
+          var tier = Number(record.tier);
+          var category = classifyRank(record.rank);
+          var row;
+          var entry;
+
+          if (!Number.isFinite(tier) || tier <= 0) {
+            unknownCount += 1;
+            return;
+          }
+
+          if (!rows[tier]) {
+            rows[tier] = createRow(
+              tier,
+              "T" + tier,
+              "T" + tier
+            );
+          }
+
+          row = rows[tier];
+          entry = row.categories[category];
+
+          row.total += 1;
+          entry.count += 1;
+          entry.maps.push(record.mapName);
+          totals[category] += 1;
+        });
+
+        Object.keys(rows).forEach(function(key) {
+          CATEGORY_DEFS.forEach(function(def) {
+            rows[key].categories[def.key].maps.sort(function(a, b) {
+              return a.localeCompare(b);
+            });
+          });
+        });
+
+        return {
+          mode: "tier",
+          rows: Object.keys(rows).map(function(key) {
+            return rows[key];
+          }).sort(function(a, b) {
+            return a.key - b.key;
+          }),
+          totals: totals,
+          totalMaps: records.length,
+          unknownCount: unknownCount
+        };
+      }
+
+      function buildStarGraph(records) {
+        var rows = {};
+        var rowList = [];
+        var totals = {};
+        var unknownCount = 0;
+
+        CATEGORY_DEFS.forEach(function(def) {
+          totals[def.key] = 0;
+        });
+
+        for (var bucket = 1; bucket <= STAR_BUCKET_MAX; bucket += 1) {
+          rows[bucket] = createRow(
+            bucket,
+            "★" + bucket,
+            "★" + bucket
+          );
+          rowList.push(rows[bucket]);
+        }
+
+        records.forEach(function(record) {
+          var bucket = Number(STAR_BUCKET_BY_MAP[record.mapName]);
+          var category = classifyRank(record.rank);
+          var row;
+          var entry;
+
+          if (!Number.isFinite(bucket) || bucket <= 0 || bucket > STAR_BUCKET_MAX) {
+            unknownCount += 1;
+            return;
+          }
+
+          row = rows[bucket];
+          entry = row.categories[category];
+
+          row.total += 1;
+          entry.count += 1;
+          entry.maps.push(record.mapName);
+          totals[category] += 1;
+        });
+
+        rowList.forEach(function(row) {
+          CATEGORY_DEFS.forEach(function(def) {
+            row.categories[def.key].maps.sort(function(a, b) {
+              return a.localeCompare(b);
+            });
+          });
+        });
+
+        return {
+          mode: "star",
+          rows: rowList,
+          totals: totals,
+          totalMaps: records.length,
+          unknownCount: unknownCount
+        };
+      }
+
+      function getGroupMode() {
+        var input = document.querySelector('input[name="label-mode"]:checked');
+        return input ? input.value : "tier";
+      }
+
+      function setGroupMode(mode) {
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="label-mode"]'), function(input) {
+          var checked = input.value === mode;
+          input.checked = checked;
+          if (input.parentNode && input.parentNode.classList) {
+            input.parentNode.classList.toggle("active", checked);
+          }
+        });
+      }
+
+      function buildGraph(records) {
+        if (getGroupMode() === "star") {
+          return buildStarGraph(records);
+        }
+
+        return buildTierGraph(records);
+      }
+
+      function renderLegend(graph) {
+        var legend = document.getElementById("legend");
+
+        legend.innerHTML = "";
+
+        CATEGORY_DEFS.forEach(function(def) {
+          var count = graph.totals[def.key];
+          var item;
+          var swatch;
+          var text;
+
+          if (!count) {
+            return;
+          }
+
+          item = document.createElement("span");
+          item.className = "legend-item";
+
+          swatch = document.createElement("span");
+          swatch.className = "legend-swatch";
+          swatch.style.backgroundColor = def.color;
+
+          text = document.createElement("span");
+          text.textContent = def.label + " (" + count + ")";
+
+          item.appendChild(swatch);
+          item.appendChild(text);
+          legend.appendChild(item);
+        });
+      }
+
+      function rerenderGraph() {
+        if (!currentRecords) {
+          return;
+        }
+
+        currentGraph = buildGraph(currentRecords);
+        renderGraph(currentGraph, currentSteamId, currentSource);
+      }
+
+      function createSegment(def, count, total, row, maps) {
+        var bar = document.createElement("div");
+        var percent = total === 0 ? 0 : (count / total) * 100;
+        var width = percent.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+        var title = def.label + ": " + count + " / " + total;
+        var visibleCount = shouldShowCount(count, total) ? String(count) : "";
+
+        bar.className = "progress-bar";
+        if (count === 0) {
+          bar.className += " progress-bar-empty";
+        }
+        bar.style.width = width + "%";
+        bar.style.backgroundColor = def.color;
+        bar.style.color = getContrastTextColor(def.color);
+        bar.title = title;
+        bar.setAttribute("data-row-key", String(row.key));
+        bar.setAttribute("data-category", def.key);
+        bar.setAttribute("role", "button");
+        bar.innerHTML = '<span class="val">' + visibleCount + "</span>";
+
+        if (count > 0) {
+          bar.addEventListener("click", function() {
+            openDetailModal(row, def.key, maps);
+          });
+        }
+
+        return bar;
+      }
+
+      function renderGraph(graph, steamId, source) {
+        var graphBody = document.getElementById("graph-body");
+        var emptyState = document.getElementById("empty-state");
+        var meta = document.getElementById("meta");
+
+        graphBody.innerHTML = "";
+
+        if (!graph.rows.length) {
+          emptyState.style.display = "block";
+        } else {
+          emptyState.style.display = "none";
+        }
+
+        graph.rows.forEach(function(rowData) {
+          var row = document.createElement("tr");
+          var levelCell = document.createElement("td");
+          var barCell = document.createElement("td");
+          var totalCell = document.createElement("td");
+          var progress = document.createElement("div");
+
+          levelCell.className = "level";
+          levelCell.textContent = rowData.label;
+          levelCell.title = rowData.title;
+
+          barCell.className = "bar-cell";
+
+          progress.className = "progress";
+
+          CATEGORY_DEFS.forEach(function(def) {
+            var category = rowData.categories[def.key];
+            progress.appendChild(
+              createSegment(
+                def,
+                category.count,
+                rowData.total,
+                rowData,
+                category.maps
+              )
+            );
+          });
+
+          totalCell.className = "total";
+          totalCell.textContent = rowData.total + " maps";
+
+          barCell.appendChild(progress);
+          row.appendChild(levelCell);
+          row.appendChild(barCell);
+          row.appendChild(totalCell);
+          graphBody.appendChild(row);
+        });
+
+        meta.textContent =
+          steamId + " / " +
+          graph.totalMaps + " maps / " +
+          "source: " + source +
+          (graph.unknownCount ? " / ignored: " + graph.unknownCount : "");
+
+        renderLegend(graph);
+      }
+
+      function openDetailModal(row, categoryKey, maps) {
+        var def = CATEGORY_LOOKUP[categoryKey];
+        var title = document.getElementById("detail-title");
+        var body = document.getElementById("detail-body");
+        var list = document.createElement("ul");
+
+        title.textContent = row.title + " / " + def.label + " / " + maps.length + " maps";
+        body.innerHTML = "";
+
+        maps.forEach(function(mapName) {
+          var item = document.createElement("li");
+          var link = document.createElement("a");
+          link.href = "https://ksf.surf/maps/" + encodeURIComponent(mapName);
+          link.textContent = mapName;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          item.appendChild(link);
+          list.appendChild(item);
+        });
+
+        body.appendChild(list);
+        $("#detail-modal").modal("show");
+      }
+
+      function setLoading(isLoading) {
+        document.getElementById("loading").style.display = isLoading ? "inline" : "none";
+        document.getElementById("load-button").disabled = isLoading;
+        document.getElementById("steam-id").disabled = isLoading;
+      }
+
+      function showError(message) {
+        var box = document.getElementById("error-box");
+        box.textContent = message;
+        box.style.display = "block";
+      }
+
+      function clearError() {
+        var box = document.getElementById("error-box");
+        box.textContent = "";
+        box.style.display = "none";
+      }
+
+      function getSteamIdFromQuery() {
+        var params = new URLSearchParams(window.location.search);
+        return (params.get("steamId") || "").trim();
+      }
+
+      function updateQueryString(steamId) {
+        var normalizedSteamId = (steamId || "").trim();
+        var url = new URL(window.location.href);
+
+        if (normalizedSteamId) {
+          url.searchParams.set("steamId", normalizedSteamId);
+        } else {
+          url.searchParams.delete("steamId");
+        }
+
+        window.history.replaceState({}, "", url.toString());
+      }
+
+      function loadRecords(steamId) {
+        var normalizedSteamId = steamId.trim();
+
+        if (!normalizedSteamId) {
+          showError("SteamIDを入力してください。");
+          return Promise.resolve();
+        }
+
+        clearError();
+        setLoading(true);
+
+        return fetchRecordsPage(normalizedSteamId).then(function(result) {
+          var records = extractRecords(result.text);
+          var playerName = extractPlayerName(result.text);
+          currentRecords = records;
+          currentSteamId = normalizedSteamId;
+          currentSource = result.source;
+          currentPlayerName = playerName;
+          renderPlayerLink(normalizedSteamId, playerName);
+          rerenderGraph();
+          updateQueryString(normalizedSteamId);
+        }).catch(function(error) {
+          showError("recordsを取得できませんでした: " + error.message);
+        }).finally(function() {
+          setLoading(false);
+        });
+      }
+
+      document.getElementById("load-form").addEventListener("submit", function(event) {
+        event.preventDefault();
+        loadRecords(document.getElementById("steam-id").value);
+      });
+
+      document.querySelector(".mode-switch").addEventListener("click", function(event) {
+        var label = event.target.closest("label");
+        var input;
+
+        if (!label) {
+          return;
+        }
+
+        input = label.querySelector('input[name="label-mode"]');
+        if (!input) {
+          return;
+        }
+
+        event.preventDefault();
+        setGroupMode(input.value);
+        rerenderGraph();
+      });
+
+      Array.prototype.forEach.call(document.querySelectorAll('input[name="label-mode"]'), function(node) {
+        node.addEventListener("change", rerenderGraph);
+      });
+
+      (function boot() {
+        var input = document.getElementById("steam-id");
+        var steamId = getSteamIdFromQuery();
+
+        input.value = steamId;
+
+        window.addEventListener("pageshow", function() {
+          input.value = getSteamIdFromQuery();
+        });
+
+        if (steamId) {
+          loadRecords(steamId);
+        }
+      })();
+    </script>
+  </body>
+</html>
